@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import AiButton from "./AiButton"; 
 import axios from "axios";
-import { Save, Printer, Mic, Trash2, FileUp } from "lucide-react";
+import { Save, Printer, Mic, Trash2, FileUp , Copy } from "lucide-react";
 import { fixGrammar, expandText, uploadOCR, uploadAudio, uploadPDF } from "./editor.api";
 
 const EditorActions = ({
@@ -82,6 +82,19 @@ const handleFileSelect = async (e, uploadFunction, setLoadingState) => {
     { symbol: "⇥", en: "new paragraph", hi: "नया पैराग्राफ", mr: "नवीन परिच्छेद" }
   ];
 
+  // 1. Print Functionality
+  const handlePrint = () => {
+    window.print();
+  };
+
+  // 2. Copy Functionality
+  const handleCopy = () => {
+    if (manualText) { // Check agar text exist karta hai
+      navigator.clipboard.writeText(manualText)
+        .then(() => alert("Text copied to clipboard!")) // Success message (Optional: Toast replace kar sakte hain)
+        .catch(err => console.error("Failed to copy:", err));
+    }
+  };
   return (
     <div className="bg-indigo-50 border-b p-2 flex items-center justify-between flex-wrap gap-2 font-sans">
       {/* --- Left Side: AI Tools --- */}
@@ -110,6 +123,13 @@ const handleFileSelect = async (e, uploadFunction, setLoadingState) => {
 
       {/* --- Right Side Toolbar --- */}
       <div className="flex items-center gap-1 ml-auto border-l pl-2 border-indigo-200">
+        <button 
+        onClick={handleCopy} 
+        className="p-2 text-gray-500 hover:bg-gray-100 hover:text-indigo-600 rounded-full transition-all" 
+        title="Copy Text"
+    >
+        <Copy size={18} strokeWidth={2} />
+    </button>
         <button className="p-2 text-gray-500 hover:bg-gray-100 hover:text-indigo-600 rounded-full transition-all" title="Save"><Save size={18} strokeWidth={2} /></button>
         <button className="p-2 text-gray-500 hover:bg-gray-100 hover:text-indigo-600 rounded-full transition-all" title="Print"><Printer size={18} strokeWidth={2} /></button>
         <button onClick={() => setShowCommands(true)} className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-full transition-all" title="Voice Commands"><Mic size={20} strokeWidth={2.5} /></button>
