@@ -1,12 +1,14 @@
-import React, { useRef } from "react";
+import React from "react";
 // Using react-quill-new to fix the findDOMNode warning
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css'; 
 import AiChat from "../components/AiChat";
 
-const EditorTextarea = ({ manualText, setManualText, showChat }) => {
-  // Using a ref directly on the element as recommended by the error message
-  const quillRef = useRef(null);
+// ✅ Added quillRef to props
+const EditorTextarea = ({ manualText, setManualText, showChat, quillRef }) => {
+  
+  // ❌ Removed the internal const quillRef = useRef(null) 
+  // because we are now using the one passed from Editor.jsx
 
   // Custom Toolbar configuration
   const modules = {
@@ -28,7 +30,7 @@ const EditorTextarea = ({ manualText, setManualText, showChat }) => {
       {/* RICH TEXT EDITOR SECTION */}
       <div className={`flex flex-col flex-1 min-w-0 ${showChat ? "w-2/3" : "w-full"}`}>
         <ReactQuill 
-          ref={quillRef}
+          ref={quillRef} // ✅ This now points to the parent's ref
           theme="snow"
           value={manualText}
           onChange={setManualText} 

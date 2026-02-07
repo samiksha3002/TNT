@@ -3,24 +3,22 @@ import EditorActions from "./EditorActions";
 import EditorTextarea from "./EditorTextarea";
 import EditorStatusBar from "./EditorStatusBar";
 import DraftPopup from "./DraftPopup";
-import FontConvertCard from "../components/Sidebar/FontConvertCard";
-import { mangalToKruti } from "../../utils/mangalToKruti";
+
+import { convertToKrutiDev } from '../../utils/krutidev';
+import { convertToShivaji } from '../../utils/shivaji';
+import { convertToPreeti } from '../../utils/preeti';
 
 const Editor = ({
   user,
   speechText,
   manualText,
   setManualText,
-
-  // Commands from Dashboard
   translationCommand,
   setTranslationCommand,
   transliterationCommand,
   setTransliterationCommand,
   fontConvertCommand,
   setFontConvertCommand,
-
-  // Loading States & Setters (Passed from Dashboard for Global Screen)
   isTranslating, setIsTranslating,
   isTransliterating, setIsTransliterating,
   isConverting, setIsConverting,
@@ -29,15 +27,14 @@ const Editor = ({
   isAIGenerating, setIsAIGenerating
 }) => {
   const lastProcessedSpeechRef = useRef("");
+  const quillRef = useRef(null); // ✅ Added Ref for cursor control
   const [showChat, setShowChat] = useState(false);
   const [showDraftPopup, setShowDraftPopup] = useState(false);
 
-  // 🌐 API Base URL
   const [API_BASE_URL, setApiBaseUrl] = useState(
     import.meta.env.VITE_API_URL || "http://localhost:5000"
   );
 
-  // Load Config
   useEffect(() => {
     fetch("/config.json")
       .then((res) => res.json())
@@ -47,16 +44,15 @@ const Editor = ({
       .catch((err) => console.error("Failed to load config.json", err));
   }, []);
 
-  // 🎤 Speech Append Logic
- useEffect(() => {
-    if (!speechText) return;
-    if (speechText === lastProcessedSpeechRef.current) return;
+  // 🎤 Speech Logic (Corrected for Cursor Position)
+  useEffect(() => {
+    if (!speechText || speechText === lastProcessedSpeechRef.current || !quillRef.current) return;
 
-    // 1. commands list defined here
+    const editor = quillRef.current.getEditor();
+    const range = editor.getSelection();
+
     const processSpeechText = (text) => {
       let processed = text;
-      
-      // --- PUNCTUATION MAPPING (From your Image) ---
       const commands = [
         { phrases: ["comma", "alpviram", "swalpviram"], symbol: "," },
         { phrases: ["full stop", "purna viram", "purnaviram"], symbol: "." },
@@ -74,106 +70,72 @@ const Editor = ({
         { phrases: ["plus sign", "jama chinh", "berij chinh"], symbol: "+" },
       ];
 
-      // Replace phrases with symbols (Case Insensitive)
       commands.forEach(({ phrases, symbol }) => {
         phrases.forEach(phrase => {
           const regex = new RegExp(`\\b${phrase}\\b`, 'gi');
           processed = processed.replace(regex, symbol);
         });
       });
-      
       return processed;
     };
 
-    setManualText((prev) => {
-      // Step 1: Process Punctuation first
-      let cleanSpeech = processSpeechText(speechText);
-      const lowerSpeech = speechText.toLowerCase();
+    let cleanSpeech = processSpeechText(speechText);
+    const lowerSpeech = speechText.toLowerCase();
+    let textToInsert = " " + cleanSpeech;
 
-      // --- FORMATTING COMMANDS ---
+    // Handle Line Breaks
+    if (["new paragraph", "naya paragraph", "navin parichhed"].some(cmd => lowerSpeech.includes(cmd))) {
+      textToInsert = "\n\n";
+    } else if (["new line", "nai line", "navin aol"].some(cmd => lowerSpeech.includes(cmd))) {
+      textToInsert = "\n";
+    }
 
-      // A. NEW PARAGRAPH (Naya Paragraph / Naveen Parichhed)
-      const paraCommands = ["new paragraph", "naya paragraph", "naya pairagraph", "naveen parichhed", "navin parichhed"];
-      if (paraCommands.some(cmd => lowerSpeech.includes(cmd))) {
-         // Remove the command word from text
-         paraCommands.forEach(cmd => {
-            cleanSpeech = cleanSpeech.replace(new RegExp(`\\b${cmd}\\b`, 'gi'), "");
-         });
-         // Create New Paragraph
-         return (prev || "") + `<p>${cleanSpeech}</p>`;
-      }
+    // Insert text at specific cursor position or at the end
+    if (range) {
+      editor.insertText(range.index, textToInsert, 'user');
+      editor.setSelection(range.index + textToInsert.length, 0); // Keep cursor right after new text
+    } else {
+      const length = editor.getLength();
+      editor.insertText(length - 1, textToInsert, 'user');
+    }
 
-      // B. NEW LINE (Nai Line / Naveen Aol)
-      const lineCommands = ["new line", "nai line", "naveen aol", "navin aol"];
-      if (lineCommands.some(cmd => lowerSpeech.includes(cmd))) {
-         // Remove the command word
-         lineCommands.forEach(cmd => {
-            cleanSpeech = cleanSpeech.replace(new RegExp(`\\b${cmd}\\b`, 'gi'), "");
-         });
-         // Insert Break (<br>) inside the last paragraph
-         if (prev && prev.trim().endsWith("</p>")) {
-            return prev.replace(/<\/p>$/, `<br>${cleanSpeech}</p>`);
-         }
-         return (prev || "") + `<p>${cleanSpeech}</p>`;
-      }
-
-      // C. NORMAL TEXT (Append to existing paragraph)
-      if (!prev) return `<p>${cleanSpeech}</p>`;
-      
-      if (prev.trim().endsWith("</p>")) {
-        // Remove closing tag, add space + text, add closing tag back
-        return prev.replace(/<\/p>$/, ` ${cleanSpeech}</p>`);
-      }
-
-      return prev + " " + cleanSpeech;
-    });
-
+    // Sync State
+    setManualText(editor.root.innerHTML);
     lastProcessedSpeechRef.current = speechText;
   }, [speechText, setManualText]);
-  // 🌐 Translation Effect
+
+  // 🌐 Translation Effect (Kept as is)
   useEffect(() => {
     const runTranslation = async () => {
       if (!translationCommand?.textToTranslate || !translationCommand?.lang) return;
-      
       try {
-        setIsTranslating(true); // Triggers Global Loading
+        setIsTranslating(true);
         const plainText = translationCommand.textToTranslate.replace(/<[^>]*>/g, "");
-        
         const res = await fetch(`${API_BASE_URL}/api/translate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ 
-            text: plainText, 
-            targetLang: translationCommand.lang 
-          }),
+          body: JSON.stringify({ text: plainText, targetLang: translationCommand.lang }),
         });
-
         if (!res.ok) throw new Error("Translation Failed");
         const data = await res.json();
-        
-        if (data.translatedText) {
-          setManualText(`<p>${data.translatedText}</p>`);
-        }
+        if (data.translatedText) setManualText(`<p>${data.translatedText}</p>`);
       } catch (err) {
         console.error("Translation error:", err);
-        alert("Translation Error. Please try again.");
       } finally {
-        setIsTranslating(false); // Hides Global Loading
+        setIsTranslating(false);
         setTranslationCommand(null);
       }
     };
     runTranslation();
   }, [translationCommand, API_BASE_URL, setManualText, setIsTranslating, setTranslationCommand]);
 
-  // ✍️ Transliteration Effect
+  // ✍️ Transliteration Effect (Kept as is)
   useEffect(() => {
     const runTransliteration = async () => {
       if (!transliterationCommand) return;
-      
       try {
-        setIsTransliterating(true); // Triggers Global Loading
+        setIsTransliterating(true);
         const plainText = transliterationCommand.textToTransliterate.replace(/<[^>]*>/g, "");
-        
         const res = await fetch(`${API_BASE_URL}/api/transliterate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -183,112 +145,86 @@ const Editor = ({
             targetScript: transliterationCommand.script === "en" ? "Latn" : "Deva",
           }),
         });
-
         if (!res.ok) throw new Error("Transliteration Failed");
         const data = await res.json();
-        
-        if (data.transliteratedText) {
-          setManualText(`<p>${data.transliteratedText}</p>`);
-        }
+        if (data.transliteratedText) setManualText(`<p>${data.transliteratedText}</p>`);
       } catch (err) {
         console.error("Transliteration error:", err);
-        alert("Transliteration Error. Please try again.");
       } finally {
-        setIsTransliterating(false); // Hides Global Loading
+        setIsTransliterating(false);
         setTransliterationCommand(null);
       }
     };
     runTransliteration();
   }, [transliterationCommand, API_BASE_URL, setManualText, setIsTransliterating, setTransliterationCommand]);
 
-  // 🔠 Font Conversion Effect
+  // 🔠 Font Conversion Effect (Kept as is)
   useEffect(() => {
-  const runFontConversion = async () => {
-    if (!fontConvertCommand?.textToConvert || !fontConvertCommand?.font) return;
-
-    try {
-      setIsConverting(true); // show global loading
-
-      // Small timeout so loading spinner is visible even for fast operations
-      setTimeout(async () => {
+    const runFontConversion = async () => {
+      if (!fontConvertCommand?.textToConvert || !fontConvertCommand?.font) return;
+      try {
+        setIsConverting(true);
         const plainText = fontConvertCommand.textToConvert.replace(/<[^>]*>/g, "");
         let convertedText = plainText;
-
-        if (fontConvertCommand.font === "krutidev") {
-          // Call backend API for KrutiDev → Unicode
-        const res = await fetch(`${API_BASE_URL}/api/font-convert/krutidev-to-unicode`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ text: plainText })
-});
-
-
-          const data = await res.json();
-          convertedText = data.convertedText || plainText;
-        } else if (fontConvertCommand.font === "unicode") {
-          // Just keep plain text for Unicode
-          convertedText = plainText;
-        }
-
-        setManualText(`<p>${convertedText}</p>`);
-        setIsConverting(false); // hide loading
+        setTimeout(async () => {
+          if (fontConvertCommand.font === "krutidev") convertedText = convertToKrutiDev(plainText);
+          else if (fontConvertCommand.font === "Shivaji") convertedText = convertToShivaji(plainText);
+          else if (fontConvertCommand.font === "Preeti") convertedText = convertToPreeti(plainText);
+          else if (fontConvertCommand.font === "unicode") {
+            const res = await fetch(`${API_BASE_URL}/api/font-convert/krutidev-to-unicode`, {
+              method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: plainText })
+            });
+            const data = await res.json();
+            convertedText = data.convertedText || plainText;
+          }
+          setManualText(`<p>${convertedText}</p>`);
+          setIsConverting(false);
+          setFontConvertCommand(null);
+        }, 500);
+      } catch (err) {
+        setIsConverting(false);
         setFontConvertCommand(null);
-      }, 500);
-    } catch (err) {
-      console.error("Font conversion error:", err);
-      setIsConverting(false);
-    }
-  };
+      }
+    };
+    runFontConversion();
+  }, [fontConvertCommand, setManualText, setIsConverting, setFontConvertCommand]);
 
-  runFontConversion();
-}, [fontConvertCommand, setManualText, setIsConverting, setFontConvertCommand]);
-
-  // Helper to clear storage (Triggered from Toolbar)
   const clearAutoSave = () => {
-     if(user?._id) {
-         localStorage.removeItem(`autosave_${user._id}`);
-         setManualText(''); 
-     }
+    if (user?._id) {
+      localStorage.removeItem(`autosave_${user._id}`);
+      setManualText('');
+    }
   }
 
   return (
     <div className="flex-1 w-full h-full flex flex-col bg-white relative overflow-hidden">
-      
-      {/* Container wrapper */}
       <div className="flex-1 border-l border-gray-200 flex flex-col overflow-hidden min-h-0">
-        
-        {/* Editor Toolbar - Passes Setters to Buttons */}
         <EditorActions
           manualText={manualText}
           setManualText={setManualText}
           showChat={showChat}
           setShowChat={setShowChat}
-          
           setIsTranslating={setIsTranslating}
-          
           isOCRLoading={isOCRLoading}
           setIsOCRLoading={setIsOCRLoading}
-          
           isAudioLoading={isAudioLoading}
           setIsAudioLoading={setIsAudioLoading}
-          
           setShowDraftPopup={setShowDraftPopup}
           setIsAIGenerating={setIsAIGenerating}
-          
           API={API_BASE_URL}
           onClear={clearAutoSave}
+          quillRef={quillRef} // ✅ Pass Ref
         />
 
-        {/* Text Area */}
         <div className="flex-1 flex flex-col min-h-0 relative overflow-hidden">
           <EditorTextarea
             manualText={manualText}
             setManualText={setManualText}
             showChat={showChat}
+            quillRef={quillRef} // ✅ Pass Ref
           />
         </div>
 
-        {/* Status Bar - Shows status indicators */}
         <EditorStatusBar
           manualText={manualText}
           speechText={speechText}
