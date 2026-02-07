@@ -32,9 +32,6 @@ router.get("/", async (req, res) => {
   }
 });
 
-// ==========================================
-// 3. GET SINGLE INQUIRY (Required for Edit Page)
-// ==========================================
 router.get("/:id", async (req, res) => {
   try {
     const inquiry = await Inquiry.findById(req.params.id);

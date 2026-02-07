@@ -7,3 +7,22 @@
   font-family: "KrutiDev";
   src: url("./fonts/KrutiDev010.ttf") format("truetype");
 }
+@media print {
+  /* Hide everything */
+  body * {
+    visibility: hidden;
+  }
+  
+  /* Show only the editor area */
+  /* Is '.editor-class-name' ko apne editor ke actual class ya ID se replace karein */
+  .editor-class-name, .editor-class-name * {
+    visibility: visible;
+  }
+  
+  .editor-class-name {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}
